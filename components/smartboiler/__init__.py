@@ -42,13 +42,13 @@ CONFIG_SCHEMA = cv.polling_component_schema('600s').extend({
     cv.Optional(CONF_TEMP2): sensor.sensor_schema(unit_of_measurement=UNIT_CELSIUS, icon=ICON_THERMOMETER, accuracy_decimals=1).extend(),
     cv.Optional(CONF_HDO_LOW_TARIFF, {"name": "HDO"}): binary_sensor.binary_sensor_schema().extend(),
     cv.Optional(CONF_HEAT_ON, {"name":"Heating", "icon": "mdi:radiator"}): binary_sensor.binary_sensor_schema().extend(),
-    cv.Optional(CONF_MODE): select.SELECT_SCHEMA.extend({
+    cv.Optional(CONF_MODE): select.select_schema(select.Select).extend({
         cv.GenerateID(): cv.declare_id(SmartBoilerModeSelect),
     }),
-    cv.Optional(CONF_THERMOSTAT): climate.CLIMATE_SCHEMA.extend({
+    cv.Optional(CONF_THERMOSTAT): climate.climate_schema(climate.Climate).extend({
         cv.GenerateID(): cv.declare_id(SmartBoilerThermostat),
     }),
-    cv.Optional(CONF_PIN, {"name": "Pairing PIN", "mode": "BOX", "icon": "mdi:lock"}): number.NUMBER_SCHEMA.extend({
+    cv.Optional(CONF_PIN, {"name": "Pairing PIN", "mode": "BOX", "icon": "mdi:lock"}): number.number_schema(number.Number).extend({
         cv.GenerateID(): cv.declare_id(SmartBoilerPinInput),
     }),
     cv.Optional(CONF_STATE, {"name": "State", "icon": "mdi:connection" }): text_sensor.text_sensor_schema().extend(),
