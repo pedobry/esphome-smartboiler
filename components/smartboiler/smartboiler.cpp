@@ -2,6 +2,14 @@
 #include "esphome/core/application.h"
 #include "esphome/components/md5/md5.h"
 
+// Make time component include conditional
+#ifdef USE_TIME
+#include "esphome/components/time/real_time_clock.h"
+// Add this line to declare the external time component
+extern esphome::time::RealTimeClock *esphome_time;
+#endif
+
+
 #define UUID_LENGTH 6
 
 static const char *const TAG = "smartboiler";
@@ -100,6 +108,14 @@ void SmartBoiler::on_set_hdo_enabled(const std::string &payload) {
   cmd.write_le(uint32_t(*hdoOpt ? 1 : 0));
   this->enqueue_command_(cmd);
 }
+
+#ifdef USE_TIME
+void SmartBoiler::on_set_time(int64_t time_adjustment) {
+  ESP_LOGI(TAG, "Adjusting time by: %ld seconds", time_adjustment);
+  auto cmd = SBProtocolRequest(SBC_PACKET_HOME_TIME, this->mPacketUid++);
+  cmd.write_le(uint64_t(time_adjustment));
+}
+#endif
 
 void SmartBoiler::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if,
                                       esp_ble_gattc_cb_param_t *param) {
@@ -330,15 +346,68 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
       ESP_LOGW(TAG, "water heater indicates that the last request has failed");
       break;
     }
+    // Time is sent by water heater every 5 seconds.
     case SBPacket::SBC_PACKET_HOME_TIME: {
       // time is in format D.HH:MM:SS
       // first byte is day
       auto day = result.mString[0] - '0';
       // the rest is a string
       auto time = result.mString.substr(2,8);
+      
       char buffer[30];
       sprintf(buffer, "%s, %s", this->day_to_string(day), time.c_str());
       ESP_LOGD(TAG, "Water heater internal time: %s", buffer);
+      
+#ifdef USE_TIME
+      // Parse the time string from water heater using strptime
+      ESPTime water_heater_time;
+      if (ESPTime::strptime(time.c_str(), water_heater_time)) {
+        // Get current time from ESPHome time component
+        auto current_time = id(esphome_time).now();
+        
+        if (current_time.is_valid()) {
+          // Convert water heater time to seconds since last Monday
+          // Water heater: 0=Monday, 1=Tuesday, ..., 6=Sunday
+          int water_heater_seconds_since_monday = (day * 24 * 3600) + 
+                                                 (water_heater_time.hour * 3600) + 
+                                                 (water_heater_time.minute * 60) + 
+                                                 water_heater_time.second;
+          
+          // Convert current time to seconds since last Monday
+          // ESPHome: 1=Sunday, 2=Monday, ..., 7=Saturday
+          int current_day_of_week = current_time.day_of_week; // 1=Sunday, 2=Monday, etc.
+          int days_since_monday = (current_day_of_week == 1) ? 6 : (current_day_of_week - 2);
+          int current_seconds_since_monday = (days_since_monday * 24 * 3600) + 
+                                            (current_time.hour * 3600) + 
+                                            (current_time.minute * 60) + 
+                                            current_time.second;
+          
+          // Calculate time difference in seconds
+          int64_t time_difference = current_seconds_since_monday - water_heater_seconds_since_monday;
+          
+          ESP_LOGD(TAG, "Current ESPHome time: %04d-%02d-%02d %02d:%02d:%02d (day: %d, seconds since Monday: %d)", 
+                   current_time.year, current_time.month, current_time.day_of_month,
+                   current_time.hour, current_time.minute, current_time.second,
+                   current_day_of_week, current_seconds_since_monday);
+          
+          char buffer[50];
+          sprintf(buffer, "%s, %s (diff: %ld sec)", this->day_to_string(day), time.c_str(), time_difference);
+          ESP_LOGD(TAG, "Water heater internal time: %s", buffer);
+          
+          // If the time difference is too large, adjust the time
+          if (time_difference > TIME_ADJUSTMENT_THRESHOLD || time_difference < -TIME_ADJUSTMENT_THRESHOLD) {
+            ESP_LOGI(TAG, "Time difference is too large, adjusting time by %ld seconds", time_difference);
+            this->on_set_time(time_difference);
+          }
+        } else {
+          ESP_LOGW(TAG, "Current time not available from ESPHome time component");
+        }
+      } else {
+        ESP_LOGW(TAG, "Failed to parse water heater time: %s", time.c_str());
+      }
+#else
+      ESP_LOGD(TAG, "Time component not available - time synchronization disabled");
+#endif
       break;
     }
     default:

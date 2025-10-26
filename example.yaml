@@ -16,6 +16,11 @@ external_components:
       url: https://github.com/pedobry/esphome-smartboiler
     components: [smartboiler]
 
+# Enable time component. This will be used to set the time on the water heater.
+time:
+  - platform: homeassistant
+    id: esphome_time
+
 # Enable Home Assistant API
 api:
   encryption:

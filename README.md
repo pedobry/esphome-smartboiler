@@ -6,6 +6,12 @@ You will need an ESP32 module and an MQTT server. You also need to determine the
 
 Note that only one device can be connected to the water heater at a time.
 
+## Hardware
+
+This component has been tested on:
+* ESP32 dev board
+* ESP32-C3
+
 ## Documentation
 
 This ESPHome component uses several standard components (sensors, etc.) for easy Home Assistant integration (auto-discovery). While it uses MQTT, it's also possible to remove MQTT and set up HA integration directly via the `api:` option.
@@ -14,7 +20,7 @@ This ESPHome component uses several standard components (sensors, etc.) for easy
 
 | Binary sensors | |
 | --- | --- |
-| HDO | On when low energy tariff is currently active |
+| HDO | On if HDO detection is enabled in the water heater |
 | Heat | On when the water heater is currently heating (consuming energy) |
 
 | Sensors | |
@@ -73,6 +79,11 @@ esp32:
 
 substitutions:
   mac_water_heater: XX:XX:XX:XX:XX:XX
+
+# Enable time component. This will be used to set the time on the water heater.
+time:
+  - platform: homeassistant
+    id: esphome_time
 
 external_components:
   - source: 
@@ -144,6 +155,11 @@ Changing/setting the PIN in other states is ignored.\
 Once the pairing is completed (state is `Connected`), the PIN value is also ignored.
 
 The ESP32 stores the UUID in NVM and pairing is persistent between restarts.
+
+### Setting time on water heater
+The water heater has internal clock which measure date-less time (only day of the week and hours, minutes and seconds). This is used for scheduling of water heater stated or temperatures (available only in original app). For that, it's necessary that water heater has proper time set up. Unfortunately, the time is lost after power outage and needs to be set up again.
+
+By enabling time ESPHome component (see YAML), we use the time from the HomeAssistant to adjust/setup the time if it differs more than 30 seconds. That keeps the the water heater time in sync with HomeAssistant.
 
 ### How to reset UUID
 

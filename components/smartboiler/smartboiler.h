@@ -13,6 +13,8 @@
 #include "esphome/components/number/number.h"
 #include "SBProtocol.h"
 
+#define TIME_ADJUSTMENT_THRESHOLD 30
+
 namespace esphome {
 namespace sb {
 
@@ -78,6 +80,7 @@ class SmartBoiler : public PollingComponent,
   const char *day_to_string(uint8_t day);
   uint8_t convert_action_to_mode(const std::string &payload);
   std::string convert_mode_to_action(const uint8_t mode);
+  void on_set_time(int64_t time_adjustment);
 
   ESPPreferenceObject pref_;
   // state of the connection

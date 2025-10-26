@@ -20,6 +20,11 @@ external_components:
 logger:
   level: info
 
+# Enable time component. This will be used to set the time on the water heaters.
+time:
+  - platform: homeassistant
+    id: esphome_time
+
 # Enable Home Assistant API
 api:
   encryption:
