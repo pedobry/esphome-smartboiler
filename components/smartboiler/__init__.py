@@ -12,7 +12,9 @@ from esphome.const import (
     ENTITY_CATEGORY_DIAGNOSTIC,
     UNIT_KILOWATT_HOURS,
     STATE_CLASS_TOTAL_INCREASING,
-    DEVICE_CLASS_ENERGY
+    DEVICE_CLASS_ENERGY,
+    UNIT_VOLT,
+    STATE_CLASS_MEASUREMENT
 )
 
 AUTO_LOAD = ["sensor", "binary_sensor", "select", "climate", "esp32_ble_tracker", "number", "text_sensor"]
@@ -26,6 +28,7 @@ CONF_HEAT_ON = 'heat_on'
 CONF_THERMOSTAT = 'thermostat'
 CONF_CONSUMPTION = 'consumption'
 CONF_BNAME = "b_name"
+CONF_ANODE_VOLTAGE = 'anode_voltage'
 
 smartboiler_controller_ns = cg.esphome_ns.namespace('sb')
 
@@ -60,12 +63,21 @@ CONFIG_SCHEMA = cv.polling_component_schema('600s').extend({
             accuracy_decimals=3,
             state_class=STATE_CLASS_TOTAL_INCREASING,
             device_class=DEVICE_CLASS_ENERGY).extend(),
+    cv.Optional(CONF_ANODE_VOLTAGE, {"name": "Anode Voltage"}): sensor.sensor_schema(
+            unit_of_measurement=UNIT_VOLT,
+            icon=ICON_FLASH,
+            accuracy_decimals=3,
+            state_class=STATE_CLASS_MEASUREMENT).extend(),
 }).extend(ble_client.BLE_CLIENT_SCHEMA)
 
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await ble_client.register_ble_node(var, config)
+
+    if CONF_ANODE_VOLTAGE in config:
+        sens = await sensor.new_sensor(config[CONF_ANODE_VOLTAGE])
+        cg.add(var.set_anode_voltage(sens))
 
     if CONF_TEMP1 in config:
         sens = await sensor.new_sensor(config[CONF_TEMP1])

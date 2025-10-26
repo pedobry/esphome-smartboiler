@@ -191,6 +191,7 @@ void SmartBoiler::getInitData() {
   this->request_value(SBPacket::SBC_PACKET_HOME_SENSOR2);
   this->request_value(SBPacket::SBC_PACKET_HOME_HSRCSTATE);
   this->request_value(SBPacket::SBC_PACKET_HDO_ONOFF);
+  this->request_value(SBPacket::SBC_PACKET_ANODE_VOLTAGE);
 }
 
 void SmartBoiler::update() {
@@ -198,6 +199,7 @@ void SmartBoiler::update() {
     ESP_LOGD(TAG, "Requesting consumption");
     auto cmd = SBProtocolRequest(SBC_PACKET_STATISTICS_GETALL, this->mPacketUid++);
     this->enqueue_command_(cmd);
+    this->request_value(SBPacket::SBC_PACKET_ANODE_VOLTAGE);
   }
 }
 
@@ -346,6 +348,16 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
       ESP_LOGW(TAG, "water heater indicates that the last request has failed");
       break;
     }
+    
+    case SBPacket::SBC_PACKET_ANODE_VOLTAGE: {
+      ESP_LOGD(TAG, "Anode voltage: %s", result.mString.c_str());
+      auto voltageValue = parse_number<float>(result.mString);
+      auto voltage = voltageValue.value() / 1000.0;
+      if (this->anode_voltage_sensor_)
+        this->anode_voltage_sensor_->publish_state(voltage);
+      break;
+    }
+
     // Time is sent by water heater every 5 seconds.
     case SBPacket::SBC_PACKET_HOME_TIME: {
       // time is in format D.HH:MM:SS

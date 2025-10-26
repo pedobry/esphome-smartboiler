@@ -58,6 +58,7 @@ class SmartBoiler : public PollingComponent,
   void set_state(text_sensor::TextSensor *t) { state_txt_ = t; }
   void set_version(text_sensor::TextSensor *t) { version_ = t; }
   void set_name(text_sensor::TextSensor *t) { name_ = t; }
+  void set_anode_voltage(sensor::Sensor *s) { anode_voltage_sensor_ = s; }
 
  protected:
   void set_uid(const std::string &uid) { this->uid_ = uid; }
@@ -101,6 +102,7 @@ class SmartBoiler : public PollingComponent,
   sensor::Sensor *temperature_sensor_1_sensor_ = nullptr;
   sensor::Sensor *temperature_sensor_2_sensor_ = nullptr;
   sensor::Sensor *consumption_sensor_ = nullptr;
+  sensor::Sensor *anode_voltage_sensor_ = nullptr;
 
   binary_sensor::BinarySensor *hdo_low_tariff_sensor_ = nullptr;
   binary_sensor::BinarySensor *heat_on_sensor_ = nullptr;
