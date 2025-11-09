@@ -112,8 +112,9 @@ void SmartBoiler::on_set_hdo_enabled(const std::string &payload) {
 #ifdef USE_TIME
 void SmartBoiler::on_set_time(int64_t time_adjustment) {
   ESP_LOGI(TAG, "Adjusting time by: %ld seconds", time_adjustment);
-  auto cmd = SBProtocolRequest(SBC_PACKET_HOME_TIME, this->mPacketUid++);
+  auto cmd = SBProtocolRequest(SBC_PACKET_HOME_SETTIME, this->mPacketUid++);
   cmd.write_le(uint64_t(time_adjustment));
+  this->enqueue_command_(cmd);
 }
 #endif
 
@@ -395,8 +396,8 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
                                             current_time.second;
           
           // Calculate time difference in seconds
-          int64_t time_difference = current_seconds_since_monday - water_heater_seconds_since_monday;
-          
+          int64_t time_difference = water_heater_seconds_since_monday - current_seconds_since_monday;
+
           ESP_LOGD(TAG, "Current ESPHome time: %04d-%02d-%02d %02d:%02d:%02d (day: %d, seconds since Monday: %d)", 
                    current_time.year, current_time.month, current_time.day_of_month,
                    current_time.hour, current_time.minute, current_time.second,
