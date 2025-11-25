@@ -444,8 +444,8 @@ esphome::climate::ClimateTraits SmartBoilerThermostat::traits() {
   rv.set_visual_min_temperature(MIN_TEMP);
   rv.set_visual_max_temperature(MAX_TEMP);
   rv.set_visual_temperature_step(1);
-  rv.set_supports_current_temperature(true);
-  rv.set_supports_action(true);
+  rv.add_feature_flags(climate::CLIMATE_SUPPORTS_CURRENT_TEMPERATURE);
+  rv.add_feature_flags(climate::CLIMATE_SUPPORTS_ACTION);
   rv.set_supported_modes({climate::CLIMATE_MODE_OFF, climate::CLIMATE_MODE_HEAT});
 
   return rv;
@@ -462,7 +462,7 @@ void SmartBoilerThermostat::publish_current_temp(float temp) {
 }
 
 void SmartBoilerThermostat::publish_action(bool heating) {
-  if (get_parent()->mode_select_->state == "STOP")
+  if (get_parent()->mode_select_->current_option() == "STOP")
     this->action = esphome::climate::CLIMATE_ACTION_OFF;
   else if (heating)
     this->action = esphome::climate::CLIMATE_ACTION_HEATING;
