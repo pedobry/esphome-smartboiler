@@ -78,7 +78,7 @@ void SmartBoiler::send_to_boiler(SBProtocolRequest request) {
                                          ESP_GATT_WRITE_TYPE_NO_RSP, ESP_GATT_AUTH_REQ_NONE);
 
   if (status)
-    ESP_LOGW(TAG, "[%s] esp_ble_gattc_write_char failed, status=%d", this->parent_->address_str().c_str(), status);
+    ESP_LOGW(TAG, "[%s] esp_ble_gattc_write_char failed, status=%d", this->parent_->address_str(), status);
 }
 
 void SmartBoiler::on_set_temperature(uint8_t temp) {
@@ -123,12 +123,12 @@ void SmartBoiler::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t 
   switch (event) {
     case ESP_GATTC_OPEN_EVT: {
       if (param->open.status == ESP_GATT_OK) {
-        ESP_LOGI(TAG, "[%s] Connected", this->parent_->address_str().c_str());
+        ESP_LOGI(TAG, "[%s] Connected", this->parent_->address_str());
       }
       break;
     }
     case ESP_GATTC_DISCONNECT_EVT: {
-      ESP_LOGI(TAG, "[%s] Disconnected", this->parent_->address_str().c_str());
+      ESP_LOGI(TAG, "[%s] Disconnected", this->parent_->address_str());
       this->set_state(ConnectionState::DISCONNECTED);
       break;
     }
@@ -136,7 +136,7 @@ void SmartBoiler::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t 
       auto chr = this->parent_->get_characteristic(SB_MAIN_SERVICE_UUID, SB_MAIN_CHARACTERISTIC_UUID);
       if (chr == nullptr) {
         ESP_LOGE(TAG, "[%s] No main service found at device, not a SmartBoiler..?",
-                 this->parent_->address_str().c_str());
+                 this->parent_->address_str());
         this->parent_->disconnect();
         break;
       }
@@ -147,7 +147,7 @@ void SmartBoiler::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t 
 
       if (chr == nullptr) {
         ESP_LOGE(TAG, "[%s] No logging service found at device, not a SmartBoiler..?",
-                 this->parent_->address_str().c_str());
+                 this->parent_->address_str());
         this->parent_->disconnect();
         break;
       }
