@@ -496,15 +496,14 @@ void SmartBoiler::process_command_queue_() {
 std::string SmartBoiler::generateUUID() {
   const char hex_chars[] = "0123456789ABCDEF";
   std::string uid;
-  uid.reserve(6);  // chceme 6 znaků
-
+  uid.reserve(6);
   for (int i = 0; i < 6; i++) {
-    uint8_t val = random(0, 16);   // náhodná hodnota 0–15
-    uid += hex_chars[val];         // přidej odpovídající hex znak
+    uid += hex_chars[random(0,16)];
   }
-
   return uid;
 }
+
+
 
 void SmartBoiler::send_pin(uint32_t pin) {
   ESP_LOGD(TAG, "Sending PIN to water heater.");
