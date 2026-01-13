@@ -1,6 +1,8 @@
 #include "smartboiler.h"
 #include "esphome/core/application.h"
 #include <MD5Builder.h>
+#include <string>
+
 
 
 // Make time component include conditional
@@ -504,13 +506,10 @@ std::string SmartBoiler::generateUUID() {
   md5.add(sbuf);
   md5.calculate();
 
-  // Ulož nejprve do Arduino String
   String hashStr = md5.toString();
-
-  // Převod na std::string
   std::string hashStd(hashStr.c_str());
 
-  return hashStd.substr(0, 6);  // prvních 6 znaků jako UID
+  return hashStd.substr(0, 6);
 }
 
 
