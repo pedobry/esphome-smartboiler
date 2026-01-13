@@ -1,6 +1,6 @@
 #include "smartboiler.h"
 #include "esphome/core/application.h"
-#include "esphome/components/md5/md5.h"
+#include <string>
 
 // Make time component include conditional
 #ifdef USE_TIME
@@ -491,21 +491,17 @@ void SmartBoiler::process_command_queue_() {
   }
 }
 
-/**
- * Generate random UUID for this device.
- */
 std::string SmartBoiler::generateUUID() {
-  char sbuf[16];
-  md5::MD5Digest md5{};
-  md5.init();
-  sprintf(sbuf, "%08X", random_uint32());
-  md5.add(sbuf, 8);
-  md5.calculate();
-  md5.get_hex(sbuf);
-  ESP_LOGV(TAG, "Auth: Nonce is %s", sbuf);
-  std::string s(sbuf);
-  return s.substr(0, 6);
+  const char hex_chars[] = "0123456789ABCDEF";
+  std::string uid;
+  uid.reserve(6);
+  for (int i = 0; i < 6; i++) {
+    uid += hex_chars[random(0,16)];
+  }
+  return uid;
 }
+
+
 
 void SmartBoiler::send_pin(uint32_t pin) {
   ESP_LOGD(TAG, "Sending PIN to water heater.");
