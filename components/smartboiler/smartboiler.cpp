@@ -504,10 +504,13 @@ std::string SmartBoiler::generateUUID() {
   md5.add(sbuf);
   md5.calculate();
 
-  // Arduino String → std::string
-  std::string hash = std::string(md5.toString().c_str());
+  // Ulož nejprve do Arduino String
+  String hashStr = md5.toString();
 
-  return hash.substr(0, 6);  // prvních 6 znaků jako UID
+  // Převod na std::string
+  std::string hashStd(hashStr.c_str());
+
+  return hashStd.substr(0, 6);  // prvních 6 znaků jako UID
 }
 
 
