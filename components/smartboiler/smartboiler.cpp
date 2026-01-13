@@ -497,16 +497,17 @@ void SmartBoiler::process_command_queue_() {
  */
 std::string SmartBoiler::generateUUID() {
   char sbuf[16];
-  sprintf(sbuf, "%08X", random_uint32());  // vygeneruj náhodnou hodnotu
+  sprintf(sbuf, "%08X", random_uint32());  // náhodné číslo jako vstup
 
   MD5Builder md5;
   md5.begin();
   md5.add(sbuf);
   md5.calculate();
 
-  String hashStr = md5.toString();          // Arduino String
-  std::string hash(hashStr.c_str());        // převod na std::string
-  return hash.substr(0, 6);                 // prvních 6 znaků jako UID
+  // Arduino String → std::string
+  std::string hash = std::string(md5.toString().c_str());
+
+  return hash.substr(0, 6);  // prvních 6 znaků jako UID
 }
 
 
