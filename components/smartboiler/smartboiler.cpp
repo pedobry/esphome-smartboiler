@@ -504,8 +504,9 @@ std::string SmartBoiler::generateUUID() {
   md5.add(sbuf);
   md5.calculate();
 
-  std::string hash = md5.toString(); // hexadecimální řetězec
-  return hash.substr(0, 6);           // vrátí prvních 6 znaků jako UID
+  String hashStr = md5.toString();          // Arduino String
+  std::string hash(hashStr.c_str());        // převod na std::string
+  return hash.substr(0, 6);                 // prvních 6 znaků jako UID
 }
 
 
