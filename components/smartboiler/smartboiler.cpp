@@ -1,6 +1,5 @@
 #include "smartboiler.h"
 #include "esphome/core/application.h"
-#include <MD5Builder.h>
 #include <string>
 
 
@@ -494,24 +493,18 @@ void SmartBoiler::process_command_queue_() {
   }
 }
 
-/**
- * Generate random UUID for this device.
- */
 std::string SmartBoiler::generateUUID() {
-  char sbuf[16];
-  sprintf(sbuf, "%08X", random_uint32());  // náhodné číslo jako vstup
+  const char hex_chars[] = "0123456789ABCDEF";
+  std::string uid;
+  uid.reserve(6);  // chceme 6 znaků
 
-  MD5Builder md5;
-  md5.begin();
-  md5.add(sbuf);
-  md5.calculate();
+  for (int i = 0; i < 6; i++) {
+    uint8_t val = random(0, 16);   // náhodná hodnota 0–15
+    uid += hex_chars[val];         // přidej odpovídající hex znak
+  }
 
-  String hashStr = md5.toString();
-  std::string hashStd(hashStr.c_str());
-
-  return hashStd.substr(0, 6);
+  return uid;
 }
-
 
 void SmartBoiler::send_pin(uint32_t pin) {
   ESP_LOGD(TAG, "Sending PIN to water heater.");
