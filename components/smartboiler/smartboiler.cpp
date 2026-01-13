@@ -1,6 +1,7 @@
 #include "smartboiler.h"
 #include "esphome/core/application.h"
-#include "esphome/components/md5/md5.h"
+#include <MD5Builder.h>
+
 
 // Make time component include conditional
 #ifdef USE_TIME
@@ -496,16 +497,17 @@ void SmartBoiler::process_command_queue_() {
  */
 std::string SmartBoiler::generateUUID() {
   char sbuf[16];
-  md5::MD5Digest md5{};
-  md5.init();
-  sprintf(sbuf, "%08X", random_uint32());
-  md5.add(sbuf, 8);
+  sprintf(sbuf, "%08X", random_uint32());  // vygeneruj náhodnou hodnotu
+
+  MD5Builder md5;
+  md5.begin();
+  md5.add(sbuf);
   md5.calculate();
-  md5.get_hex(sbuf);
-  ESP_LOGV(TAG, "Auth: Nonce is %s", sbuf);
-  std::string s(sbuf);
-  return s.substr(0, 6);
+
+  std::string hash = md5.toString(); // hexadecimální řetězec
+  return hash.substr(0, 6);           // vrátí prvních 6 znaků jako UID
 }
+
 
 void SmartBoiler::send_pin(uint32_t pin) {
   ESP_LOGD(TAG, "Sending PIN to water heater.");
