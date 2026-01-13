@@ -2,8 +2,6 @@
 #include "esphome/core/application.h"
 #include <string>
 
-
-
 // Make time component include conditional
 #ifdef USE_TIME
 #include "esphome/components/time/real_time_clock.h"
