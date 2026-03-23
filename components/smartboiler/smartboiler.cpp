@@ -495,7 +495,7 @@ std::string SmartBoiler::generateUUID() {
   std::string uid;
   uid.reserve(6);
   for (int i = 0; i < 6; i++) {
-    uid += hex_chars[random(0,16)];
+    uid += hex_chars[random_uint32() & 0xF];
   }
   return uid;
 }
