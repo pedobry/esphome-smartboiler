@@ -16,6 +16,9 @@
 #define TIME_ADJUSTMENT_THRESHOLD 30
 
 namespace esphome {
+namespace time {
+class RealTimeClock;
+}
 namespace sb {
 
 static const uint8_t MIN_TEMP = 40;
@@ -59,6 +62,7 @@ class SmartBoiler : public PollingComponent,
   void set_version(text_sensor::TextSensor *t) { version_ = t; }
   void set_name(text_sensor::TextSensor *t) { name_ = t; }
   void set_anode_voltage(sensor::Sensor *s) { anode_voltage_sensor_ = s; }
+  void set_time_clock(time::RealTimeClock *rtc) { this->time_clock_ = rtc; }
 
  protected:
   void set_uid(const std::string &uid) { this->uid_ = uid; }
@@ -112,6 +116,7 @@ class SmartBoiler : public PollingComponent,
   SmartBoilerModeSelect *mode_select_ = nullptr;
   SmartBoilerThermostat *thermostat_ = nullptr;
   SmartBoilerPinInput *mPin_ = nullptr;
+  time::RealTimeClock *time_clock_{nullptr};
 
   friend class SmartBoilerModeSelect;
   friend class SmartBoilerThermostat;

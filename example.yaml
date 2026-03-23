@@ -32,6 +32,7 @@ ble_client:
 
 smartboiler:
   - ble_client_id: drazice_okhe
+    time_id: esphome_time
     temp1:
       name: "Water heater temp1"
     temp2:

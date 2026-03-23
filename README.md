@@ -105,6 +105,7 @@ ble_client:
 
 smartboiler:
   - ble_client_id: drazice_okhe
+    time_id: esphome_time
     temp1:
       name: "Water heater temp1"
     temp2:
@@ -159,7 +160,7 @@ The ESP32 stores the UUID in NVM and pairing is persistent between restarts.
 ### Setting time on water heater
 The water heater has internal clock which measure date-less time (only day of the week and hours, minutes and seconds). This is used for scheduling of water heater stated or temperatures (available only in original app). For that, it's necessary that water heater has proper time set up. Unfortunately, the time is lost after power outage and needs to be set up again.
 
-By enabling time ESPHome component (see YAML), we use the time from the HomeAssistant to adjust/setup the time if it differs more than 30 seconds. That keeps the the water heater time in sync with HomeAssistant.
+Add a `time:` source (for example `platform: homeassistant`) and set `time_id` on each `smartboiler` entry to the same `id` as that clock. The firmware then compares the heater clock to ESPHome and adjusts if it differs by more than 30 seconds, keeping the heater aligned with Home Assistant.
 
 ### How to reset UUID
 
