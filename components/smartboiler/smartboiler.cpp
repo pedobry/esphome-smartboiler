@@ -2,13 +2,9 @@
 #include "esphome/core/application.h"
 #include "esphome/components/md5/md5.h"
 
-// Make time component include conditional
 #ifdef USE_TIME
 #include "esphome/components/time/real_time_clock.h"
-// Add this line to declare the external time component
-extern esphome::time::RealTimeClock *esphome_time;
 #endif
-
 
 #define UUID_LENGTH 6
 
@@ -375,9 +371,11 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
       // Parse the time string from water heater using strptime
       ESPTime water_heater_time;
       if (ESPTime::strptime(time.c_str(), water_heater_time)) {
-        // Get current time from ESPHome time component
-        auto current_time = id(esphome_time).now();
-        
+        if (this->time_clock_ == nullptr) {
+          ESP_LOGW(TAG, "No time_id configured on smartboiler; time sync skipped");
+        } else {
+        auto current_time = this->time_clock_->now();
+
         if (current_time.is_valid()) {
           // Convert water heater time to seconds since last Monday
           // Water heater: 0=Monday, 1=Tuesday, ..., 6=Sunday
@@ -414,6 +412,7 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
           }
         } else {
           ESP_LOGW(TAG, "Current time not available from ESPHome time component");
+        }
         }
       } else {
         ESP_LOGW(TAG, "Failed to parse water heater time: %s", time.c_str());

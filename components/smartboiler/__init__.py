@@ -3,7 +3,7 @@ import esphome.config_validation as cv
 from esphome.components import (
     ble_client, sensor,
     select, binary_sensor,
-    climate, number, text_sensor
+    climate, number, text_sensor, time as time_,
 )
 from esphome.const import (
     CONF_ID,CONF_STATE, CONF_PIN,
@@ -29,6 +29,7 @@ CONF_THERMOSTAT = 'thermostat'
 CONF_CONSUMPTION = 'consumption'
 CONF_BNAME = "b_name"
 CONF_ANODE_VOLTAGE = 'anode_voltage'
+CONF_TIME_ID = 'time_id'
 
 smartboiler_controller_ns = cg.esphome_ns.namespace('sb')
 
@@ -68,6 +69,7 @@ CONFIG_SCHEMA = cv.polling_component_schema('600s').extend({
             icon=ICON_FLASH,
             accuracy_decimals=3,
             state_class=STATE_CLASS_MEASUREMENT).extend(),
+    cv.Optional(CONF_TIME_ID): cv.use_id(time_.RealTimeClock),
 }).extend(ble_client.BLE_CLIENT_SCHEMA)
 
 async def to_code(config):
@@ -130,3 +132,7 @@ async def to_code(config):
         name = cg.new_Pvariable(config[CONF_BNAME][CONF_ID])
         await text_sensor.register_text_sensor(name, config[CONF_BNAME])
         cg.add(var.set_name(name))
+
+    if CONF_TIME_ID in config:
+        rtc = await cg.get_variable(config[CONF_TIME_ID])
+        cg.add(var.set_time_clock(rtc))
