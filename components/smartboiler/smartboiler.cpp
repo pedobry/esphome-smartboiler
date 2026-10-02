@@ -1,5 +1,6 @@
 #include "smartboiler.h"
 #include "esphome/core/application.h"
+#include <cinttypes>
 #include <string>
 
 #ifdef USE_TIME
@@ -107,7 +108,7 @@ void SmartBoiler::on_set_hdo_enabled(const std::string &payload) {
 
 #ifdef USE_TIME
 void SmartBoiler::on_set_time(int64_t time_adjustment) {
-  ESP_LOGI(TAG, "Adjusting time by: %ld seconds", time_adjustment);
+  ESP_LOGI(TAG, "Adjusting time by: %" PRId64 " seconds", time_adjustment);
   auto cmd = SBProtocolRequest(SBC_PACKET_HOME_SETTIME, this->mPacketUid++);
   cmd.write_le(uint64_t(time_adjustment));
   this->enqueue_command_(cmd);
@@ -402,12 +403,12 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
                    current_day_of_week, current_seconds_since_monday);
           
           char buffer[50];
-          sprintf(buffer, "%s, %s (diff: %ld sec)", this->day_to_string(day), time.c_str(), time_difference);
+          sprintf(buffer, "%s, %s (diff: %" PRId64 " sec)", this->day_to_string(day), time.c_str(), time_difference);
           ESP_LOGD(TAG, "Water heater internal time: %s", buffer);
           
           // If the time difference is too large, adjust the time
           if (time_difference > TIME_ADJUSTMENT_THRESHOLD || time_difference < -TIME_ADJUSTMENT_THRESHOLD) {
-            ESP_LOGI(TAG, "Time difference is too large, adjusting time by %ld seconds", time_difference);
+            ESP_LOGI(TAG, "Time difference is too large, adjusting time by %" PRId64 " seconds", time_difference);
             this->on_set_time(time_difference);
           }
         } else {
