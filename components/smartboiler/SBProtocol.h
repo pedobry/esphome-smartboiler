@@ -4,7 +4,7 @@
 #include <string>
 
 namespace esphome {
-namespace sb {
+namespace smartboiler {
 
 enum SBPacket : uint16_t {
   SBC_PACKET_ANODE_PARAMS = 95,
@@ -92,7 +92,7 @@ enum SBPacket : uint16_t {
   SBC_PACKET_STATISTICS_YEAR = 91,
 };
 
-enum Mode: uint8_t {
+enum Mode : uint8_t {
   STOP = 0,
   // MANUAL/HDO is selected based on HDO setting in water heater
   MANUAL = 1,
@@ -109,15 +109,15 @@ enum Mode: uint8_t {
 
 class SBProtocolRequest {
  public:
-  SBProtocolRequest(SBPacket reqType) {
-    this->mRqType = reqType;
-    this->write_le(uint16_t(reqType));
+  SBProtocolRequest(SBPacket req_type) {
+    this->rq_type = req_type;
+    this->write_le(uint16_t(req_type));
     this->write_le(uint16_t(0));
   }
-  SBProtocolRequest(SBPacket reqType, uint16_t uid) {
-    this->mRqType = reqType;
-    this->mUid = uid;
-    this->write_le(uint16_t(reqType));
+  SBProtocolRequest(SBPacket req_type, uint16_t uid) {
+    this->rq_type = req_type;
+    this->uid = uid;
+    this->write_le(uint16_t(req_type));
     this->write_le(uid);
   }
 
@@ -125,27 +125,27 @@ class SBProtocolRequest {
   void write_le(uint16_t s);
   void write_le(uint32_t s);
   void write_le(uint64_t s);
-  void writeString(const std::string &s);
+  void write_string(const std::string &s);
 
-  std::vector<uint8_t> mData;
-  SBPacket mRqType;
-  uint16_t mUid = 0;
+  std::vector<uint8_t> data;
+  SBPacket rq_type;
+  uint16_t uid = 0;
   // millis() of the first and the most recent transmission (0 = not sent yet)
-  uint32_t mFirstSent = 0;
-  uint32_t mLastSent = 0;
+  uint32_t first_sent = 0;
+  uint32_t last_sent = 0;
 };
 
 class SBProtocolResult {
  public:
   SBProtocolResult(const uint8_t *value, uint16_t value_len);
-  SBPacket mRqType;
-  uint16_t mUid = 0;
-  std::vector<uint8_t> mByteData;
-  const uint8_t* mRawData;
-  std::string mString;
+  SBPacket rq_type;
+  uint16_t uid = 0;
+  std::vector<uint8_t> byte_data;
+  const uint8_t *raw_data;
+  std::string text;
   uint16_t load_uint16_le(size_t position);
   uint32_t load_uint32_le(size_t position);
 };
 
-}  // namespace sb
+}  // namespace smartboiler
 }  // namespace esphome

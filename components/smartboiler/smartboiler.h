@@ -1,8 +1,5 @@
 #pragma once
 
-#ifndef SMARTBOILER_H
-#define SMARTBOILER_H
-
 #include "esphome/core/component.h"
 #include "esphome/components/ble_client/ble_client.h"
 #include "esphome/components/text_sensor/text_sensor.h"
@@ -19,7 +16,7 @@ namespace esphome {
 namespace time {
 class RealTimeClock;
 }
-namespace sb {
+namespace smartboiler {
 
 // time difference (seconds) between ESPHome and water heater clock which triggers time adjustment
 static constexpr int64_t TIME_ADJUSTMENT_THRESHOLD = 30;
@@ -72,8 +69,7 @@ struct SavedSmartBoilerSettings {
   char uid[6];
 } PACKED;
 
-class SmartBoiler : public PollingComponent,
-                    public esphome::ble_client::BLEClientNode {
+class SmartBoiler final : public PollingComponent, public esphome::ble_client::BLEClientNode {
  public:
   void setup() override;
   void update() override;
@@ -83,7 +79,7 @@ class SmartBoiler : public PollingComponent,
   void gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if,
                            esp_ble_gattc_cb_param_t *param) override;
 
-  void set_pin_input(SmartBoilerPinInput *n) { mPin_ = n; }
+  void set_pin_input(SmartBoilerPinInput *n) { pin_input_ = n; }
   void set_temp1(sensor::Sensor *s) { temperature_sensor_1_sensor_ = s; }
   void set_temp2(sensor::Sensor *s) { temperature_sensor_2_sensor_ = s; }
   void set_hdo_low_tariff(binary_sensor::BinarySensor *s) { hdo_low_tariff_sensor_ = s; }
@@ -130,11 +126,11 @@ class SmartBoiler : public PollingComponent,
   void process_command_queue_();
   void send_pin(uint32_t pin);
   void authenticate();
-  void getInitData();
+  void request_init_data_();
   void restore_state_();
   void save_state_();
-  void set_state(ConnectionState newState);
-  std::string generateUUID();
+  void set_state(ConnectionState new_state);
+  std::string generate_uid_();
   const char *state_to_string(ConnectionState state);
   const char *day_to_string(uint8_t day);
   optional<uint8_t> convert_action_to_mode(const std::string &payload);
@@ -152,7 +148,7 @@ class SmartBoiler : public PollingComponent,
   // random UID of this device. Needs to be registered in boiler via PIN pairing.
   std::string uid_;
   // incremental counter for packets which requires unique ID
-  uint16_t mPacketUid = 0;
+  uint16_t packet_uid_ = 0;
   uint32_t last_command_timestamp_ = 0;
   // when the authentication request was last sent
   uint32_t auth_sent_at_ = 0;
@@ -167,6 +163,8 @@ class SmartBoiler : public PollingComponent,
   int prog_temp_high_ = -1;
   int holiday_start_ = -1;
   int holiday_length_ = -1;
+  // HDO (ripple control) decoder of the water heater is enabled
+  bool hdo_enabled_ = false;
   // firmware version of the water heater, 0 when unknown
   float fw_version_ = 0;
   uint32_t last_low_tariff_poll_ = 0;
@@ -190,7 +188,7 @@ class SmartBoiler : public PollingComponent,
   text_sensor::TextSensor *name_ = nullptr;
   SmartBoilerModeSelect *mode_select_ = nullptr;
   SmartBoilerThermostat *thermostat_ = nullptr;
-  SmartBoilerPinInput *mPin_ = nullptr;
+  SmartBoilerPinInput *pin_input_ = nullptr;
   time::RealTimeClock *time_clock_{nullptr};
   binary_sensor::BinarySensor *low_tariff_sensor_ = nullptr;
   binary_sensor::BinarySensor *problem_sensor_ = nullptr;
@@ -212,21 +210,17 @@ class SmartBoiler : public PollingComponent,
   friend class SmartBoilerSwitch;
   friend class SmartBoilerNumber;
   friend class SmartBoilerResetEnergyButton;
-
-private:
-  bool isHdoEnabled = false;
-  
 };
 
-class SmartBoilerModeSelect : public esphome::select::Select, public esphome::Parented<SmartBoiler> {
+class SmartBoilerModeSelect final : public esphome::select::Select, public esphome::Parented<SmartBoiler> {
  protected:
-  virtual void control(const std::string &value) override;
+  void control(const std::string &value) override;
 };
 
-class SmartBoilerThermostat : public esphome::climate::Climate, public esphome::Parented<SmartBoiler> {
+class SmartBoilerThermostat final : public esphome::climate::Climate, public esphome::Parented<SmartBoiler> {
  protected:
-  virtual void control(const esphome::climate::ClimateCall &call) override;
-  virtual esphome::climate::ClimateTraits traits() override;
+  void control(const esphome::climate::ClimateCall &call) override;
+  esphome::climate::ClimateTraits traits() override;
 
   void publish_target_temp(float temp);
   void publish_current_temp(float temp);
@@ -236,12 +230,12 @@ class SmartBoilerThermostat : public esphome::climate::Climate, public esphome::
   friend class SmartBoiler;
 };
 
-class SmartBoilerPinInput : public esphome::number::Number, public esphome::Parented<SmartBoiler> {
+class SmartBoilerPinInput final : public esphome::number::Number, public esphome::Parented<SmartBoiler> {
  protected:
-  virtual void control(float value) override;
+  void control(float value) override;
 };
 
-class SmartBoilerSwitch : public esphome::switch_::Switch, public esphome::Parented<SmartBoiler> {
+class SmartBoilerSwitch final : public esphome::switch_::Switch, public esphome::Parented<SmartBoiler> {
  public:
   void set_type(SwitchType type) { this->type_ = type; }
 
@@ -250,7 +244,7 @@ class SmartBoilerSwitch : public esphome::switch_::Switch, public esphome::Paren
   SwitchType type_{SwitchType::HDO};
 };
 
-class SmartBoilerNumber : public esphome::number::Number, public esphome::Parented<SmartBoiler> {
+class SmartBoilerNumber final : public esphome::number::Number, public esphome::Parented<SmartBoiler> {
  public:
   void set_type(NumberType type) { this->type_ = type; }
 
@@ -259,12 +253,10 @@ class SmartBoilerNumber : public esphome::number::Number, public esphome::Parent
   NumberType type_{NumberType::PROG_TEMP_LOW};
 };
 
-class SmartBoilerResetEnergyButton : public esphome::button::Button, public esphome::Parented<SmartBoiler> {
+class SmartBoilerResetEnergyButton final : public esphome::button::Button, public esphome::Parented<SmartBoiler> {
  protected:
   void press_action() override;
 };
 
-}  // namespace sb
+}  // namespace smartboiler
 }  // namespace esphome
-
-#endif
