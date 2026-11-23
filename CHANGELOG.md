@@ -1,6 +1,6 @@
 # Changelog
 
-## v2.0.0 (unreleased)
+## v2.0.0 (2026-11-23)
 
 ### Breaking changes
 
@@ -10,6 +10,8 @@ Your YAML needs to be updated - see [Upgrading from older versions](README.md#up
 * The *Monitoring* switch is created by the component, remove the `switch:` with `platform: ble_client`.
 * All entities are created automatically with default names. Entity names in YAML are optional.
 * The pairing UID is stored under a key derived from the water heater MAC address and no longer depends on entity names. The UID stored by older versions is found and migrated automatically on the first start.
+* Requires ESPHome 2026.1 or newer.
+* Raw packet dumps and other frequent messages are logged at `VERBOSE` level instead of `DEBUG`.
 
 ### New entities
 
@@ -24,6 +26,9 @@ Your YAML needs to be updated - see [Upgrading from older versions](README.md#up
 * STOP, TEST and HOLIDAY modes are reported correctly, thermostat shows OFF in STOP mode.
 * No crash when optional entities are not configured, values from the water heater are validated.
 * Water heater clock is not adjusted twice while an adjustment is pending.
+* Builds with ESPHome 2026.11.
+* Possible buffer overflow with a long firmware version string from the water heater.
+* Protocol packets, received texts and request queues use fixed-size buffers instead of heap allocations (prevents heap fragmentation on long uptimes).
 
 ## v1.0.0
 
