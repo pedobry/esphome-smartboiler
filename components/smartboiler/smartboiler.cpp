@@ -32,6 +32,9 @@ static const uint16_t CLIENT_CHARACTERISTIC_CONFIG_DESCRIPTOR_UUID = 0x2902;
 
 static const int COMMAND_DELAY = 100;
 
+// Stack buffer for hex dumps in debug logs; longer packets are truncated in the log only.
+static constexpr size_t HEX_LOG_BUFFER_SIZE = format_hex_pretty_size(64);
+
 static bool is_valid_uid(const char *uid, size_t len) {
   if (len != UUID_LENGTH)
     return false;
@@ -236,7 +239,9 @@ bool SmartBoiler::is_time_adjustment_pending_() {
 
 void SmartBoiler::send_to_boiler(SBProtocolRequest request) {
   this->last_command_timestamp_ = millis();
-  ESP_LOGD(TAG, "Sending: REQ: %d DATA=[%s]", request.mRqType, format_hex_pretty(request.mData).c_str());
+  char hex_buf[HEX_LOG_BUFFER_SIZE];
+  ESP_LOGD(TAG, "Sending: REQ: %d DATA=[%s]", request.mRqType,
+           format_hex_pretty_to(hex_buf, request.mData, '.'));
   auto status = esp_ble_gattc_write_char(this->parent_->get_gattc_if(), this->parent_->get_conn_id(),
                                          this->char_handle_, request.mData.size(), request.mData.data(),
                                          ESP_GATT_WRITE_TYPE_NO_RSP, ESP_GATT_AUTH_REQ_NONE);
@@ -581,7 +586,9 @@ void SmartBoiler::request_value(SBPacket sensor, uint16_t uid) {
 void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
   auto result = SBProtocolResult(value, value_len);
 
-  ESP_LOGD(TAG, "Received: REQ: %d DATA=[%s]", result.mRqType, format_hex_pretty(value, value_len).c_str());
+  char hex_buf[HEX_LOG_BUFFER_SIZE];
+  ESP_LOGD(TAG, "Received: REQ: %d DATA=[%s]", result.mRqType,
+           format_hex_pretty_to(hex_buf, value, value_len, '.'));
 
   switch (result.mRqType) {
     case SBPacket::SBC_PACKET_GLOBAL_PAIRPIN: {
@@ -595,7 +602,7 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
       // server is expected. Most of them contain no additional data, with exception of
       // SBC_PACKET_STATISTICS_GETALL
       ESP_LOGD(TAG, "Received confirmation for packet with UID: %0X", result.mUid);
-      ESP_LOGD(TAG, "mByteData: DATA=[%s]", format_hex_pretty(result.mByteData).c_str());
+      ESP_LOGD(TAG, "mByteData: DATA=[%s]", format_hex_pretty_to(hex_buf, result.mByteData, '.'));
 
       // find original request in queue of sent packets
       auto originalRequest = std::find_if(this->sent_queue_.begin(), this->sent_queue_.end(),
@@ -1115,17 +1122,16 @@ void SmartBoilerPinInput::control(const float value) {
  * the water heater is configured to use HDO internal decoder.
  */
 optional<uint8_t> SmartBoiler::convert_action_to_mode(const std::string &payload) {
-  auto modeStr = str_upper_case(payload);
-
-  if (modeStr == MODE_ANTIFREEZE)
+  if (str_equals_case_insensitive(payload, MODE_ANTIFREEZE))
     return Mode::ANTIFREEZE;
-  if (modeStr == MODE_SMART)
+  if (str_equals_case_insensitive(payload, MODE_SMART))
     return this->isHdoEnabled ? Mode::SMART_HDO : Mode::SMART;
-  if (modeStr == MODE_PROG)
+  if (str_equals_case_insensitive(payload, MODE_PROG))
     return Mode::PROG;
-  if (modeStr == MODE_MANUAL)
+  if (str_equals_case_insensitive(payload, MODE_MANUAL))
     return this->isHdoEnabled ? Mode::HDO : Mode::MANUAL;
-  if (modeStr == MODE_STOP || modeStr == MODE_TEST || modeStr == MODE_HOLIDAY) {
+  if (str_equals_case_insensitive(payload, MODE_STOP) || str_equals_case_insensitive(payload, MODE_TEST) ||
+      str_equals_case_insensitive(payload, MODE_HOLIDAY)) {
     ESP_LOGW(TAG, "Mode %s cannot be set from ESPHome.", payload.c_str());
     return {};
   }
