@@ -14,8 +14,6 @@
 #include <nvs.h>
 #include <nvs_flash.h>
 
-#define UUID_LENGTH 6
-
 static const char *const TAG = "smartboiler";
 
 namespace esphome {
@@ -31,6 +29,8 @@ static const uint16_t SB_LOGGING_CHARACTERISTIC_UUID = 0x2B98;
 static const uint16_t CLIENT_CHARACTERISTIC_CONFIG_DESCRIPTOR_UUID = 0x2902;
 
 static const int COMMAND_DELAY = 100;
+
+static constexpr size_t UUID_LENGTH = 6;
 
 // Stack buffer for hex dumps in debug logs; longer packets are truncated in the log only.
 static constexpr size_t HEX_LOG_BUFFER_SIZE = format_hex_pretty_size(64);
@@ -157,31 +157,31 @@ void SmartBoiler::publish_monitoring_() {
 
 void SmartBoiler::dump_config() {
   ESP_LOGCONFIG(TAG, "SmartBoiler:");
-  LOG_SENSOR("  ", "Temp1", temperature_sensor_1_sensor_);
-  LOG_SENSOR("  ", "Temp2", temperature_sensor_2_sensor_);
-  LOG_SENSOR("  ", "Consumption", consumption_sensor_);
-  LOG_BINARY_SENSOR("  ", "HDO", hdo_low_tariff_sensor_);
-  LOG_SELECT("  ", "Mode", mode_select_);
-  LOG_CLIMATE("  ", "Thermostat", thermostat_);
-  LOG_NUMBER("  ", "Pairing PIN", mPin_);
-  LOG_TEXT_SENSOR("  ", "Version", version_);
-  LOG_TEXT_SENSOR("  ", "State", state_txt_);
-  LOG_TEXT_SENSOR("  ", "Name", name_);
-  LOG_TEXT_SENSOR("  ", "Model", model_txt_);
-  LOG_TEXT_SENSOR("  ", "Error", error_txt_);
-  LOG_BINARY_SENSOR("  ", "Heating", heat_on_sensor_);
-  LOG_BINARY_SENSOR("  ", "Low tariff", low_tariff_sensor_);
-  LOG_BINARY_SENSOR("  ", "Problem", problem_sensor_);
-  LOG_SENSOR("  ", "Anode voltage", anode_voltage_sensor_);
-  LOG_SENSOR("  ", "Capacity", capacity_sensor_);
-  LOG_SENSOR("  ", "PROG temperature", prog_temperature_sensor_);
-  LOG_SWITCH("  ", "HDO", hdo_switch_);
-  LOG_SWITCH("  ", "Anti-legionella", antilegionella_switch_);
-  LOG_SWITCH("  ", "Monitoring", monitoring_switch_);
-  LOG_NUMBER("  ", "PROG low temperature", prog_temp_low_number_);
-  LOG_NUMBER("  ", "PROG high temperature", prog_temp_high_number_);
-  LOG_NUMBER("  ", "Holiday start", holiday_start_number_);
-  LOG_NUMBER("  ", "Holiday length", holiday_length_number_);
+  LOG_SENSOR("  ", "Temp1", this->temperature_sensor_1_sensor_);
+  LOG_SENSOR("  ", "Temp2", this->temperature_sensor_2_sensor_);
+  LOG_SENSOR("  ", "Consumption", this->consumption_sensor_);
+  LOG_BINARY_SENSOR("  ", "HDO", this->hdo_low_tariff_sensor_);
+  LOG_SELECT("  ", "Mode", this->mode_select_);
+  LOG_CLIMATE("  ", "Thermostat", this->thermostat_);
+  LOG_NUMBER("  ", "Pairing PIN", this->mPin_);
+  LOG_TEXT_SENSOR("  ", "Version", this->version_);
+  LOG_TEXT_SENSOR("  ", "State", this->state_txt_);
+  LOG_TEXT_SENSOR("  ", "Name", this->name_);
+  LOG_TEXT_SENSOR("  ", "Model", this->model_txt_);
+  LOG_TEXT_SENSOR("  ", "Error", this->error_txt_);
+  LOG_BINARY_SENSOR("  ", "Heating", this->heat_on_sensor_);
+  LOG_BINARY_SENSOR("  ", "Low tariff", this->low_tariff_sensor_);
+  LOG_BINARY_SENSOR("  ", "Problem", this->problem_sensor_);
+  LOG_SENSOR("  ", "Anode voltage", this->anode_voltage_sensor_);
+  LOG_SENSOR("  ", "Capacity", this->capacity_sensor_);
+  LOG_SENSOR("  ", "PROG temperature", this->prog_temperature_sensor_);
+  LOG_SWITCH("  ", "HDO", this->hdo_switch_);
+  LOG_SWITCH("  ", "Anti-legionella", this->antilegionella_switch_);
+  LOG_SWITCH("  ", "Monitoring", this->monitoring_switch_);
+  LOG_NUMBER("  ", "PROG low temperature", this->prog_temp_low_number_);
+  LOG_NUMBER("  ", "PROG high temperature", this->prog_temp_high_number_);
+  LOG_NUMBER("  ", "Holiday start", this->holiday_start_number_);
+  LOG_NUMBER("  ", "Holiday length", this->holiday_length_number_);
 }
 
 void SmartBoiler::loop() {
@@ -526,7 +526,7 @@ void SmartBoiler::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t 
       break;
     }
     case ESP_GATTC_NOTIFY_EVT: {
-      handle_incoming(param->notify.value, param->notify.value_len);
+      this->handle_incoming(param->notify.value, param->notify.value_len);
       break;
     }
     default:
@@ -686,10 +686,10 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
           if (firstTime && this->fw_version_ >= MIN_FW_ANTILEGIONELLA && this->antilegionella_switch_)
             this->request_value(SBC_PACKET_HOME_ANTILEGIO);
           char buffer[100];
-          sprintf(buffer, "fw:%s, board: %s, S/N: %s", fwVersion.c_str(), boardRev.c_str(), serial.c_str());
-          std::string version(buffer);
+          snprintf(buffer, sizeof(buffer), "fw:%s, board: %s, S/N: %s", fwVersion.c_str(), boardRev.c_str(),
+                   serial.c_str());
           if (this->version_)
-            this->version_->publish_state(version);
+            this->version_->publish_state(buffer);
           break;
         }
       }
@@ -740,7 +740,7 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
       auto is_heating = *heatOpt == 1;
       if (this->heat_on_sensor_)
         this->heat_on_sensor_->publish_state(is_heating);
-      if (thermostat_)
+      if (this->thermostat_)
         this->thermostat_->publish_action(is_heating);
       break;
     }
@@ -858,7 +858,7 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
       auto time = result.mString.substr(2,8);
       
       char buffer[30];
-      sprintf(buffer, "%s, %s", this->day_to_string(day), time.c_str());
+      snprintf(buffer, sizeof(buffer), "%s, %s", this->day_to_string(day), time.c_str());
       ESP_LOGD(TAG, "Water heater internal time: %s", buffer);
       
 #ifdef USE_TIME
@@ -896,7 +896,8 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
                    current_day_of_week, current_seconds_since_monday);
           
           char buffer[50];
-          sprintf(buffer, "%s, %s (diff: %" PRId64 " sec)", this->day_to_string(day), time.c_str(), time_difference);
+          snprintf(buffer, sizeof(buffer), "%s, %s (diff: %" PRId64 " sec)", this->day_to_string(day), time.c_str(),
+                   time_difference);
           ESP_LOGD(TAG, "Water heater internal time: %s", buffer);
           
           // If the time difference is too large, adjust the time
@@ -923,7 +924,7 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
   }
 }
 
-void SmartBoilerModeSelect::control(const std::string &value) { get_parent()->on_set_mode(value); }
+void SmartBoilerModeSelect::control(const std::string &value) { this->get_parent()->on_set_mode(value); }
 
 void SmartBoilerSwitch::write_state(bool state) {
   if (this->type_ == SwitchType::MONITORING) {
@@ -967,7 +968,7 @@ void SmartBoilerThermostat::control(const esphome::climate::ClimateCall &call) {
   if (call.get_target_temperature().has_value()) {
     float tt = *call.get_target_temperature();
     uint8_t target_temp = (uint8_t) tt;
-    get_parent()->on_set_temperature(target_temp);
+    this->get_parent()->on_set_temperature(target_temp);
   }
 }
 
@@ -1042,7 +1043,8 @@ void SmartBoiler::process_command_queue_() {
       this->sent_queue_.push_back(nextCmd);
     }
     this->command_queue_.erase(this->command_queue_.begin());
-    ESP_LOGD(TAG, "Queue status - QUEUE=[%d], SENT_QUEUE=[%d]", this->command_queue_.size(), this->sent_queue_.size());
+    ESP_LOGD(TAG, "Queue status - QUEUE=[%u], SENT_QUEUE=[%u]", (unsigned) this->command_queue_.size(),
+             (unsigned) this->sent_queue_.size());
   }
 }
 
@@ -1108,9 +1110,9 @@ void SmartBoiler::set_state(ConnectionState newState) {
 }
 
 void SmartBoilerPinInput::control(const float value) {
-  if (get_parent()->state_ == ConnectionState::NEED_PIN) {
+  if (this->get_parent()->state_ == ConnectionState::NEED_PIN) {
     uint32_t pin = floor(value);
-    get_parent()->send_pin(pin);
+    this->get_parent()->send_pin(pin);
   } else {
     ESP_LOGW(TAG, "Device is not in pairing mode, PIN change is ignored.");
   }

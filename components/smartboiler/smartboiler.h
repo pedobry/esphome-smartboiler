@@ -15,25 +15,26 @@
 #include "esphome/components/button/button.h"
 #include "SBProtocol.h"
 
-#define TIME_ADJUSTMENT_THRESHOLD 30
-
 namespace esphome {
 namespace time {
 class RealTimeClock;
 }
 namespace sb {
 
+// time difference (seconds) between ESPHome and water heater clock which triggers time adjustment
+static constexpr int64_t TIME_ADJUSTMENT_THRESHOLD = 30;
+
 static const uint8_t MIN_TEMP = 40;
 static const uint8_t MAX_TEMP = 80;
 
-static const std::string MODE_ANTIFREEZE = "ANTIFREEZE";
-static const std::string MODE_SMART = "SMART";
-static const std::string MODE_PROG = "PROG";
-static const std::string MODE_MANUAL = "MANUAL";
+static constexpr const char *MODE_ANTIFREEZE = "ANTIFREEZE";
+static constexpr const char *MODE_SMART = "SMART";
+static constexpr const char *MODE_PROG = "PROG";
+static constexpr const char *MODE_MANUAL = "MANUAL";
 // modes which are reported by the water heater, but cannot be selected
-static const std::string MODE_STOP = "STOP";
-static const std::string MODE_TEST = "TEST";
-static const std::string MODE_HOLIDAY = "HOLIDAY";
+static constexpr const char *MODE_STOP = "STOP";
+static constexpr const char *MODE_TEST = "TEST";
+static constexpr const char *MODE_HOLIDAY = "HOLIDAY";
 
 // re-send authentication request if water heater did not respond (same as original app)
 static const uint32_t AUTH_RETRY_INTERVAL = 4000;

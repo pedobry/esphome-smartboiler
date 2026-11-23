@@ -27,7 +27,11 @@ from esphome.const import (
     UNIT_LITRE,
 )
 
-AUTO_LOAD = ["sensor", "binary_sensor", "select", "climate", "esp32_ble_tracker", "number", "text_sensor",
+CODEOWNERS = ["@pedobry"]
+DEPENDENCIES = ["ble_client"]
+DOMAIN = "smartboiler"
+
+AUTO_LOAD = ["sensor","binary_sensor", "select", "climate", "esp32_ble_tracker", "number", "text_sensor",
              "switch", "button"]
 
 CONF_TEMP1 = 'temp1'
