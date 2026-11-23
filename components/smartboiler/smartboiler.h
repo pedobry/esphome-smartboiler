@@ -43,6 +43,9 @@ static const uint32_t PACKET_EXPIRATION = 30000;
 static const uint32_t SENT_QUEUE_CHECK_INTERVAL = 1000;
 // how often the "low tariff available now" state is polled
 static const uint32_t LOW_TARIFF_POLL_INTERVAL = 60000;
+// capacity of the queues of waiting and sent (unconfirmed) requests; initial data needs ~20 requests
+static constexpr size_t COMMAND_QUEUE_SIZE = 32;
+static constexpr size_t SENT_QUEUE_SIZE = 16;
 
 // temperature limits for PROG (night) mode, same as original app
 static const uint8_t PROG_MIN_TEMP = 10;
@@ -117,11 +120,11 @@ class SmartBoiler final : public PollingComponent, public esphome::ble_client::B
   void send_holiday_(int start, int length);
   void refresh_after_(SBPacket request);
   void publish_error_(uint32_t mask);
-  void parse_holiday_(const std::string &payload);
+  void parse_holiday_(const char *payload, size_t len);
   void publish_monitoring_();
   void handle_incoming(const uint8_t *data, uint16_t length);
   void request_value(SBPacket value, uint16_t uid = 0);
-  void send_to_boiler(SBProtocolRequest request);
+  void send_to_boiler(const SBProtocolRequest &request);
   void enqueue_command_(const SBProtocolRequest &command);
   void process_command_queue_();
   void send_pin(uint32_t pin);
@@ -134,7 +137,7 @@ class SmartBoiler final : public PollingComponent, public esphome::ble_client::B
   const char *state_to_string(ConnectionState state);
   const char *day_to_string(uint8_t day);
   optional<uint8_t> convert_action_to_mode(const std::string &payload);
-  std::string convert_mode_to_action(const uint8_t mode);
+  const char *convert_mode_to_action(uint8_t mode);
   void on_set_time(int64_t time_adjustment);
   uint16_t next_packet_uid_();
   void check_sent_queue_();
@@ -172,9 +175,9 @@ class SmartBoiler final : public PollingComponent, public esphome::ble_client::B
   // Handle for outgoing requests
   uint16_t char_handle_;
   // queue of commands waiting to be send
-  std::vector<SBProtocolRequest> command_queue_;
+  FixedQueue<SBProtocolRequest, COMMAND_QUEUE_SIZE> command_queue_;
   // queue for sent command to later pair with responses
-  std::vector<SBProtocolRequest> sent_queue_;
+  FixedQueue<SBProtocolRequest, SENT_QUEUE_SIZE> sent_queue_;
 
   sensor::Sensor *temperature_sensor_1_sensor_ = nullptr;
   sensor::Sensor *temperature_sensor_2_sensor_ = nullptr;

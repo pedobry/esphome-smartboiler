@@ -1,5 +1,7 @@
 #pragma once
-#include <vector>
+#include <algorithm>
+#include <array>
+#include <cstddef>
 #include <stdint.h>
 #include <string>
 
@@ -107,16 +109,53 @@ enum Mode : uint8_t {
   HOLIDAY = 8,
 };
 
+// Largest request sent to the water heater: 4 bytes header + 8 bytes payload (time adjustment).
+// 20 bytes fit into a single BLE write with the default MTU.
+static constexpr size_t SB_MAX_REQUEST_SIZE = 20;
+// Confirmation packets carry up to 16 bytes of data after the UID.
+static constexpr size_t SB_MAX_CONFIRM_DATA = 16;
+// Longest text payload kept from a notification (longer texts are truncated).
+static constexpr size_t SB_MAX_TEXT_LENGTH = 64;
+
+/// Fixed-capacity FIFO/list without heap allocation. Not thread safe.
+template<typename T, size_t N> class FixedQueue {
+ public:
+  using iterator = T *;
+  using const_iterator = const T *;
+
+  /// Append an item, returns false if the queue is full.
+  bool push_back(const T &item) {
+    if (this->size_ >= N)
+      return false;
+    this->items_[this->size_++] = item;
+    return true;
+  }
+  /// Remove the item at pos, returns iterator to the following item.
+  iterator erase(iterator pos) {
+    std::move(pos + 1, this->end(), pos);
+    this->size_--;
+    return pos;
+  }
+  T &front() { return this->items_[0]; }
+  void clear() { this->size_ = 0; }
+  size_t size() const { return this->size_; }
+  bool empty() const { return this->size_ == 0; }
+  static constexpr size_t capacity() { return N; }
+
+  iterator begin() { return this->items_.data(); }
+  iterator end() { return this->items_.data() + this->size_; }
+  const_iterator begin() const { return this->items_.data(); }
+  const_iterator end() const { return this->items_.data() + this->size_; }
+
+ protected:
+  std::array<T, N> items_{};
+  size_t size_{0};
+};
+
 class SBProtocolRequest {
  public:
-  SBProtocolRequest(SBPacket req_type) {
-    this->rq_type = req_type;
-    this->write_le(uint16_t(req_type));
-    this->write_le(uint16_t(0));
-  }
-  SBProtocolRequest(SBPacket req_type, uint16_t uid) {
-    this->rq_type = req_type;
-    this->uid = uid;
+  SBProtocolRequest() = default;
+  explicit SBProtocolRequest(SBPacket req_type, uint16_t uid = 0) : rq_type(req_type), uid(uid) {
     this->write_le(uint16_t(req_type));
     this->write_le(uid);
   }
@@ -127,24 +166,46 @@ class SBProtocolRequest {
   void write_le(uint64_t s);
   void write_string(const std::string &s);
 
-  std::vector<uint8_t> data;
-  SBPacket rq_type;
-  uint16_t uid = 0;
+  const uint8_t *data() const { return this->data_.data(); }
+  size_t size() const { return this->size_; }
+  /// true if the payload did not fit into SB_MAX_REQUEST_SIZE and was truncated
+  bool overflow() const { return this->overflow_; }
+
+  SBPacket rq_type{SBPacket::SBC_PACKET_NONE};
+  uint16_t uid{0};
   // millis() of the first and the most recent transmission (0 = not sent yet)
-  uint32_t first_sent = 0;
-  uint32_t last_sent = 0;
+  uint32_t first_sent{0};
+  uint32_t last_sent{0};
+
+ protected:
+  void append_(uint8_t b);
+
+  std::array<uint8_t, SB_MAX_REQUEST_SIZE> data_{};
+  uint8_t size_{0};
+  bool overflow_{false};
 };
 
 class SBProtocolResult {
  public:
   SBProtocolResult(const uint8_t *value, uint16_t value_len);
-  SBPacket rq_type;
-  uint16_t uid = 0;
-  std::vector<uint8_t> byte_data;
-  const uint8_t *raw_data;
-  std::string text;
-  uint16_t load_uint16_le(size_t position);
-  uint32_t load_uint32_le(size_t position);
+
+  /// data of a confirmation packet (after the UID)
+  const uint8_t *byte_data() const { return this->byte_data_.data(); }
+  size_t byte_data_size() const { return this->byte_data_size_; }
+  /// text payload, always NUL terminated
+  const char *text() const { return this->text_; }
+  size_t text_length() const { return this->text_length_; }
+  /// little endian uint32 from confirmation data, caller must check byte_data_size()
+  uint32_t load_uint32_le(size_t position) const;
+
+  SBPacket rq_type{SBPacket::SBC_PACKET_NONE};
+  uint16_t uid{0};
+
+ protected:
+  std::array<uint8_t, SB_MAX_CONFIRM_DATA> byte_data_{};
+  uint8_t byte_data_size_{0};
+  char text_[SB_MAX_TEXT_LENGTH + 1]{};
+  uint8_t text_length_{0};
 };
 
 }  // namespace smartboiler

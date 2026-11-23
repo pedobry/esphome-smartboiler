@@ -218,7 +218,11 @@ void SmartBoiler::check_sent_queue_() {
     } else if (now - it->last_sent > PACKET_RESEND_INTERVAL && it->rq_type != SBC_PACKET_HOME_SETTIME) {
       // time adjustment is relative, re-sending it could shift the clock twice
       ESP_LOGV(TAG, "Request %d (UID %d) not confirmed yet, re-sending", it->rq_type, it->uid);
-      this->command_queue_.push_back(*it);
+      if (!this->command_queue_.push_back(*it)) {
+        // command queue is full, try again on the next check
+        ++it;
+        continue;
+      }
       it = this->sent_queue_.erase(it);
     } else {
       ++it;
@@ -237,12 +241,14 @@ bool SmartBoiler::is_time_adjustment_pending_() {
          std::any_of(this->sent_queue_.begin(), this->sent_queue_.end(), is_settime);
 }
 
-void SmartBoiler::send_to_boiler(SBProtocolRequest request) {
+void SmartBoiler::send_to_boiler(const SBProtocolRequest &request) {
   this->last_command_timestamp_ = millis();
   char hex_buf[HEX_LOG_BUFFER_SIZE];
-  ESP_LOGV(TAG, "Sending: REQ: %d DATA=[%s]", request.rq_type, format_hex_pretty_to(hex_buf, request.data, '.'));
+  ESP_LOGV(TAG, "Sending: REQ: %d DATA=[%s]", request.rq_type,
+           format_hex_pretty_to(hex_buf, request.data(), request.size(), '.'));
+  // ESP-IDF API takes a non-const pointer, but does not modify the data
   auto status = esp_ble_gattc_write_char(this->parent_->get_gattc_if(), this->parent_->get_conn_id(),
-                                         this->char_handle_, request.data.size(), request.data.data(),
+                                         this->char_handle_, request.size(), const_cast<uint8_t *>(request.data()),
                                          ESP_GATT_WRITE_TYPE_NO_RSP, ESP_GATT_AUTH_REQ_NONE);
 
   if (status)
@@ -424,35 +430,39 @@ static const char *const ERROR_TEXTS[] = {
 void SmartBoiler::publish_error_(uint32_t mask) {
   if (this->problem_sensor_)
     this->problem_sensor_->publish_state(mask != 0);
-  std::string text;
-  for (uint8_t bit = 0; bit < sizeof(ERROR_TEXTS) / sizeof(ERROR_TEXTS[0]); bit++) {
+  char text[256];
+  size_t pos = 0;
+  text[0] = '\0';
+  for (uint8_t bit = 0; bit < sizeof(ERROR_TEXTS) / sizeof(ERROR_TEXTS[0]) && pos < sizeof(text); bit++) {
     if (mask & (1u << bit)) {
-      char code[8];
-      snprintf(code, sizeof(code), "Er%02d: ", bit + 1);
-      if (!text.empty())
-        text += "; ";
-      text += code;
-      text += ERROR_TEXTS[bit];
+      int n = snprintf(text + pos, sizeof(text) - pos, "%sEr%02d: %s", pos > 0 ? "; " : "", bit + 1, ERROR_TEXTS[bit]);
+      if (n > 0)
+        pos += n;
     }
   }
-  if (mask != 0 && text.empty())
-    text = "Unknown error " + to_string(mask);
+  if (mask != 0 && pos == 0)
+    snprintf(text, sizeof(text), "Unknown error %" PRIu32, mask);
   if (mask != 0)
-    ESP_LOGW(TAG, "Water heater reports error: %s", text.c_str());
+    ESP_LOGW(TAG, "Water heater reports error: %s", text);
   if (this->error_txt_)
     this->error_txt_->publish_state(mask == 0 ? "OK" : text);
 }
 
-void SmartBoiler::parse_holiday_(const std::string &payload) {
+void SmartBoiler::parse_holiday_(const char *payload, size_t len) {
   // two 8 digit decimal numbers: days to begin, length (0/0 = no holiday)
-  if (payload.size() < 16) {
-    ESP_LOGW(TAG, "Bad holiday format from water heater: %s", payload.c_str());
+  if (len < 16) {
+    ESP_LOGW(TAG, "Bad holiday format from water heater: %s", payload);
     return;
   }
-  auto start = parse_number<int>(payload.substr(0, 8));
-  auto length = parse_number<int>(payload.substr(8, 8));
+  char start_str[9], length_str[9];
+  memcpy(start_str, payload, 8);
+  start_str[8] = '\0';
+  memcpy(length_str, payload + 8, 8);
+  length_str[8] = '\0';
+  auto start = parse_number<int>(start_str);
+  auto length = parse_number<int>(length_str);
   if (!start.has_value() || !length.has_value()) {
-    ESP_LOGW(TAG, "Bad holiday format from water heater: %s", payload.c_str());
+    ESP_LOGW(TAG, "Bad holiday format from water heater: %s", payload);
     return;
   }
   this->holiday_start_ = *start;
@@ -598,7 +608,8 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
       // server is expected. Most of them contain no additional data, with exception of
       // SBC_PACKET_STATISTICS_GETALL
       ESP_LOGV(TAG, "Received confirmation for packet with UID: %0X", result.uid);
-      ESP_LOGV(TAG, "Confirmation data: [%s]", format_hex_pretty_to(hex_buf, result.byte_data, '.'));
+      ESP_LOGV(TAG, "Confirmation data: [%s]",
+               format_hex_pretty_to(hex_buf, result.byte_data(), result.byte_data_size(), '.'));
 
       // find original request in queue of sent packets
       auto original_request =
@@ -613,7 +624,7 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
         // handle some special confirm packets
         switch (original_type) {
           case SBPacket::SBC_PACKET_STATISTICS_GETALL: {
-            if (result.byte_data.size() < 4) {
+            if (result.byte_data_size() < 4) {
               ESP_LOGW(TAG, "Consumption response too short");
               break;
             }
@@ -631,9 +642,9 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
     }
     case SBPacket::SBC_PACKET_GLOBAL_ERRORUID: {
       // water heater rejected request with given UID
-      auto uid_opt = parse_number<int>(result.text);
+      auto uid_opt = parse_number<int>(result.text());
       if (!uid_opt.has_value()) {
-        ESP_LOGW(TAG, "Bad error UID from water heater: %s", result.text.c_str());
+        ESP_LOGW(TAG, "Bad error UID from water heater: %s", result.text());
         break;
       }
       auto rejected = std::find_if(this->sent_queue_.begin(), this->sent_queue_.end(),
@@ -656,48 +667,46 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
       break;
     }
     case SBPacket::SBC_PACKET_GLOBAL_PINRESULT: {
-      auto pin_result = parse_number<int>(result.text);
+      auto pin_result = parse_number<int>(result.text());
       if (pin_result.has_value() && pin_result.value() == 1) {
         ESP_LOGI(TAG, "PIN is correct");
         this->set_state(ConnectionState::CONNECTED);
         this->request_init_data_();
       } else {
-        ESP_LOGW(TAG, "Wrong PIN provided, water heater response: %s", result.text.c_str());
+        ESP_LOGW(TAG, "Wrong PIN provided, water heater response: %s", result.text());
       }
       break;
     }
 
     case SBPacket::SBC_PACKET_HOME_FWVERSION: {
       // Format: firmware;board revision;serial number
-      auto first_semicolon = result.text.find(';');
-      if (first_semicolon != std::string::npos) {
-        auto second_semicolon = result.text.find(';', first_semicolon + 1);
-        if (second_semicolon != std::string::npos) {
-          auto fw_str = result.text.substr(0, first_semicolon);
-          auto board_rev = result.text.substr(first_semicolon + 1, second_semicolon - first_semicolon - 1);
-          auto serial = result.text.substr(second_semicolon + 1);
-          auto fw_opt = parse_number<float>(fw_str);
-          bool first_time = this->fw_version_ == 0;
-          if (fw_opt.has_value())
-            this->fw_version_ = *fw_opt;
-          if (first_time && this->fw_version_ >= MIN_FW_ANTILEGIONELLA && this->antilegionella_switch_)
-            this->request_value(SBC_PACKET_HOME_ANTILEGIO);
-          char buffer[100];
-          snprintf(buffer, sizeof(buffer), "fw:%s, board: %s, S/N: %s", fw_str.c_str(), board_rev.c_str(),
-                   serial.c_str());
-          if (this->version_)
-            this->version_->publish_state(buffer);
-          break;
-        }
+      const char *text = result.text();
+      const char *first_semicolon = strchr(text, ';');
+      const char *second_semicolon = first_semicolon != nullptr ? strchr(first_semicolon + 1, ';') : nullptr;
+      if (second_semicolon != nullptr) {
+        char fw_str[16];
+        snprintf(fw_str, sizeof(fw_str), "%.*s", (int) (first_semicolon - text), text);
+        auto fw_opt = parse_number<float>(fw_str);
+        bool first_time = this->fw_version_ == 0;
+        if (fw_opt.has_value())
+          this->fw_version_ = *fw_opt;
+        if (first_time && this->fw_version_ >= MIN_FW_ANTILEGIONELLA && this->antilegionella_switch_)
+          this->request_value(SBC_PACKET_HOME_ANTILEGIO);
+        char buffer[100];
+        snprintf(buffer, sizeof(buffer), "fw:%s, board: %.*s, S/N: %s", fw_str,
+                 (int) (second_semicolon - first_semicolon - 1), first_semicolon + 1, second_semicolon + 1);
+        if (this->version_)
+          this->version_->publish_state(buffer);
+        break;
       }
-      ESP_LOGW(TAG, "Bad FW info format: %s", result.text.c_str());
+      ESP_LOGW(TAG, "Bad FW info format: %s", result.text());
       break;
     }
 
     case SBPacket::SBC_PACKET_HOME_MODE: {
-      auto mode_opt = parse_number<int>(result.text);
+      auto mode_opt = parse_number<int>(result.text());
       if (!mode_opt.has_value()) {
-        ESP_LOGW(TAG, "Bad mode string from water heater: %s", result.text.c_str());
+        ESP_LOGW(TAG, "Bad mode string from water heater: %s", result.text());
         break;
       }
       this->current_mode_ = mode_opt.value();
@@ -705,21 +714,21 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
       break;
     }
     case SBPacket::SBC_PACKET_HOME_TEMPERATURE: {
-      auto temp_opt = parse_number<float>(result.text);
+      auto temp_opt = parse_number<float>(result.text());
       if (temp_opt.has_value() && this->thermostat_) {
         this->thermostat_->publish_target_temp(*temp_opt);
       }
       break;
     }
     case SBPacket::SBC_PACKET_HOME_SENSOR1: {
-      auto temp_opt = parse_number<float>(result.text);
+      auto temp_opt = parse_number<float>(result.text());
       if (temp_opt.has_value() && this->temperature_sensor_1_sensor_) {
         this->temperature_sensor_1_sensor_->publish_state(*temp_opt);
       }
       break;
     }
     case SBPacket::SBC_PACKET_HOME_SENSOR2: {
-      auto temp_opt = parse_number<float>(result.text);
+      auto temp_opt = parse_number<float>(result.text());
       if (temp_opt.has_value()) {
         if (this->temperature_sensor_2_sensor_)
           this->temperature_sensor_2_sensor_->publish_state(*temp_opt);
@@ -729,9 +738,9 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
       break;
     }
     case SBPacket::SBC_PACKET_HOME_HSRCSTATE: {
-      auto heat_opt = parse_number<int>(result.text);
+      auto heat_opt = parse_number<int>(result.text());
       if (!heat_opt.has_value()) {
-        ESP_LOGW(TAG, "Bad heat source state from water heater: %s", result.text.c_str());
+        ESP_LOGW(TAG, "Bad heat source state from water heater: %s", result.text());
         break;
       }
       auto is_heating = *heat_opt == 1;
@@ -742,9 +751,9 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
       break;
     }
     case SBPacket::SBC_PACKET_HDO_ONOFF: {
-      auto hdo_opt = parse_number<int>(result.text);
+      auto hdo_opt = parse_number<int>(result.text());
       if (!hdo_opt.has_value()) {
-        ESP_LOGW(TAG, "Bad HDO state from water heater: %s", result.text.c_str());
+        ESP_LOGW(TAG, "Bad HDO state from water heater: %s", result.text());
         break;
       }
       this->hdo_enabled_ = *hdo_opt == 1;
@@ -757,36 +766,36 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
     }
     case SBPacket::SBC_PACKET_HOME_BOILERNAME: {
       if (this->name_)
-        this->name_->publish_state(result.text);
+        this->name_->publish_state(result.text());
       break;
     }
     case SBPacket::SBC_PACKET_HOME_BOILERMODEL: {
-      ESP_LOGD(TAG, "Water heater model: %s", result.text.c_str());
+      ESP_LOGD(TAG, "Water heater model: %s", result.text());
       if (this->model_txt_)
-        this->model_txt_->publish_state(result.text);
+        this->model_txt_->publish_state(result.text());
       break;
     }
     case SBPacket::SBC_PACKET_HOME_CAPACITY: {
-      ESP_LOGD(TAG, "Water heater capacity: %s l", result.text.c_str());
-      auto cap_opt = parse_number<float>(result.text);
+      ESP_LOGD(TAG, "Water heater capacity: %s l", result.text());
+      auto cap_opt = parse_number<float>(result.text());
       if (cap_opt.has_value() && this->capacity_sensor_)
         this->capacity_sensor_->publish_state(*cap_opt);
       break;
     }
     case SBPacket::SBC_PACKET_HOME_ERROR: {
       // bitmask of errors (Er01..Er09 in the original app)
-      auto err_opt = parse_number<uint32_t>(result.text);
+      auto err_opt = parse_number<uint32_t>(result.text());
       if (!err_opt.has_value()) {
-        ESP_LOGW(TAG, "Bad error state from water heater: %s", result.text.c_str());
+        ESP_LOGW(TAG, "Bad error state from water heater: %s", result.text());
         break;
       }
       this->publish_error_(*err_opt);
       break;
     }
     case SBPacket::SBC_PACKET_HDO_LESSEXPTARIFFAVAILABLENOW: {
-      auto low_tariff_opt = parse_number<int>(result.text);
+      auto low_tariff_opt = parse_number<int>(result.text());
       if (!low_tariff_opt.has_value()) {
-        ESP_LOGW(TAG, "Bad low tariff state from water heater: %s", result.text.c_str());
+        ESP_LOGW(TAG, "Bad low tariff state from water heater: %s", result.text());
         break;
       }
       if (this->low_tariff_sensor_)
@@ -794,16 +803,16 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
       break;
     }
     case SBPacket::SBC_PACKET_HOME_ANTILEGIO: {
-      auto al_opt = parse_number<int>(result.text);
+      auto al_opt = parse_number<int>(result.text());
       if (al_opt.has_value() && this->antilegionella_switch_)
         this->antilegionella_switch_->publish_state(*al_opt > 0);
       break;
     }
     case SBPacket::SBC_PACKET_HOME_TEMPNIGHTLOW:
     case SBPacket::SBC_PACKET_HOME_TEMPNIGHT: {
-      auto temp_opt = parse_number<float>(result.text);
+      auto temp_opt = parse_number<float>(result.text());
       if (!temp_opt.has_value()) {
-        ESP_LOGW(TAG, "Bad PROG temperature from water heater: %s", result.text.c_str());
+        ESP_LOGW(TAG, "Bad PROG temperature from water heater: %s", result.text());
         break;
       }
       int t = (int) lroundf(*temp_opt);
@@ -819,21 +828,21 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
       break;
     }
     case SBPacket::SBC_PACKET_HOME_TEMPNIGHTCURR: {
-      auto temp_opt = parse_number<float>(result.text);
+      auto temp_opt = parse_number<float>(result.text());
       if (temp_opt.has_value() && this->prog_temperature_sensor_)
         this->prog_temperature_sensor_->publish_state(*temp_opt);
       break;
     }
     case SBPacket::SBC_PACKET_HOLIDAY_GET: {
-      this->parse_holiday_(result.text);
+      this->parse_holiday_(result.text(), result.text_length());
       break;
     }
 
     case SBPacket::SBC_PACKET_ANODE_VOLTAGE: {
-      ESP_LOGV(TAG, "Anode voltage: %s", result.text.c_str());
-      auto voltage_opt = parse_number<float>(result.text);
+      ESP_LOGV(TAG, "Anode voltage: %s", result.text());
+      auto voltage_opt = parse_number<float>(result.text());
       if (!voltage_opt.has_value()) {
-        ESP_LOGW(TAG, "Bad anode voltage from water heater: %s", result.text.c_str());
+        ESP_LOGW(TAG, "Bad anode voltage from water heater: %s", result.text());
         break;
       }
       auto voltage = *voltage_opt / 1000.0;
@@ -845,23 +854,25 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
     // Time is sent by water heater every 5 seconds.
     case SBPacket::SBC_PACKET_HOME_TIME: {
       // time is in format D.HH:MM:SS
-      if (result.text.size() < 10) {
-        ESP_LOGW(TAG, "Bad time format from water heater: %s", result.text.c_str());
+      if (result.text_length() < 10) {
+        ESP_LOGW(TAG, "Bad time format from water heater: %s", result.text());
         break;
       }
       // first byte is day
-      auto day = result.text[0] - '0';
-      // the rest is a string
-      auto time = result.text.substr(2, 8);
+      auto day = result.text()[0] - '0';
+      // the rest is HH:MM:SS
+      char time[9];
+      memcpy(time, result.text() + 2, 8);
+      time[8] = '\0';
 
       char buffer[30];
-      snprintf(buffer, sizeof(buffer), "%s, %s", this->day_to_string(day), time.c_str());
+      snprintf(buffer, sizeof(buffer), "%s, %s", this->day_to_string(day), time);
       ESP_LOGV(TAG, "Water heater internal time: %s", buffer);
 
 #ifdef USE_TIME
-      // Parse the time string from water heater using strptime
-      ESPTime water_heater_time;
-      if (ESPTime::strptime(time.c_str(), water_heater_time)) {
+      int wh_hour, wh_minute, wh_second;
+      if (sscanf(time, "%2d:%2d:%2d", &wh_hour, &wh_minute, &wh_second) == 3 && wh_hour < 24 && wh_minute < 60 &&
+          wh_second < 60) {
         if (this->time_clock_ == nullptr) {
           ESP_LOGW(TAG, "No time_id configured on smartboiler; time sync skipped");
         } else {
@@ -870,8 +881,7 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
           if (current_time.is_valid()) {
             // Convert water heater time to seconds since last Monday
             // Water heater: 0=Monday, 1=Tuesday, ..., 6=Sunday
-            int water_heater_seconds_since_monday = (day * 24 * 3600) + (water_heater_time.hour * 3600) +
-                                                    (water_heater_time.minute * 60) + water_heater_time.second;
+            int water_heater_seconds_since_monday = (day * 24 * 3600) + (wh_hour * 3600) + (wh_minute * 60) + wh_second;
 
             // Convert current time to seconds since last Monday
             // ESPHome: 1=Sunday, 2=Monday, ..., 7=Saturday
@@ -888,7 +898,7 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
                      current_time.minute, current_time.second, current_day_of_week, current_seconds_since_monday);
 
             char buffer[50];
-            snprintf(buffer, sizeof(buffer), "%s, %s (diff: %" PRId64 " sec)", this->day_to_string(day), time.c_str(),
+            snprintf(buffer, sizeof(buffer), "%s, %s (diff: %" PRId64 " sec)", this->day_to_string(day), time,
                      time_difference);
             ESP_LOGV(TAG, "Water heater internal time: %s", buffer);
 
@@ -904,7 +914,7 @@ void SmartBoiler::handle_incoming(const uint8_t *value, uint16_t value_len) {
           }
         }
       } else {
-        ESP_LOGW(TAG, "Failed to parse water heater time: %s", time.c_str());
+        ESP_LOGW(TAG, "Failed to parse water heater time: %s", time);
       }
 #else
       ESP_LOGV(TAG, "Time component not available - time synchronization disabled");
@@ -1006,7 +1016,7 @@ void SmartBoilerThermostat::publish_action(bool heating) {
 
 void SmartBoiler::publish_mode_(int mode) {
   auto mode_str = this->convert_mode_to_action(mode);
-  if (mode_str.empty()) {
+  if (mode_str == nullptr) {
     ESP_LOGW(TAG, "Unknown mode value from water heater: %d", mode);
     return;
   }
@@ -1017,7 +1027,15 @@ void SmartBoiler::publish_mode_(int mode) {
 }
 
 void SmartBoiler::enqueue_command_(const SBProtocolRequest &command) {
-  this->command_queue_.push_back(command);
+  if (command.overflow()) {
+    // never send a truncated request to the water heater
+    ESP_LOGE(TAG, "Request %d too long, dropped", command.rq_type);
+    return;
+  }
+  if (!this->command_queue_.push_back(command)) {
+    ESP_LOGW(TAG, "Command queue full, request %d dropped", command.rq_type);
+    return;
+  }
   this->process_command_queue_();
 }
 
@@ -1031,9 +1049,8 @@ void SmartBoiler::process_command_queue_() {
     next_cmd.last_sent = millis();
     if (next_cmd.first_sent == 0)
       next_cmd.first_sent = next_cmd.last_sent;
-    if (next_cmd.uid) {
-      this->sent_queue_.push_back(next_cmd);
-    }
+    if (next_cmd.uid && !this->sent_queue_.push_back(next_cmd))
+      ESP_LOGW(TAG, "Sent queue full, confirmation of request %d will be ignored", next_cmd.rq_type);
     this->command_queue_.erase(this->command_queue_.begin());
     ESP_LOGV(TAG, "Queue status - QUEUE=[%u], SENT_QUEUE=[%u]", (unsigned) this->command_queue_.size(),
              (unsigned) this->sent_queue_.size());
@@ -1131,7 +1148,7 @@ optional<uint8_t> SmartBoiler::convert_action_to_mode(const std::string &payload
   return {};
 }
 
-std::string SmartBoiler::convert_mode_to_action(const uint8_t mode) {
+const char *SmartBoiler::convert_mode_to_action(uint8_t mode) {
   switch (mode) {
     case Mode::STOP:
       return MODE_STOP;
@@ -1150,7 +1167,7 @@ std::string SmartBoiler::convert_mode_to_action(const uint8_t mode) {
     case Mode::HOLIDAY:
       return MODE_HOLIDAY;
     default:
-      return "";
+      return nullptr;
   }
 }
 

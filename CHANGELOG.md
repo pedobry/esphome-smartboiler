@@ -28,6 +28,7 @@ Your YAML needs to be updated - see [Upgrading from older versions](README.md#up
 * Water heater clock is not adjusted twice while an adjustment is pending.
 * Builds with ESPHome 2026.11.
 * Possible buffer overflow with a long firmware version string from the water heater.
+* Protocol packets, received texts and request queues use fixed-size buffers instead of heap allocations (prevents heap fragmentation on long uptimes).
 
 ## v1.0.0
 
